@@ -1,89 +1,53 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import StatsCards from './StatsCards';
 import DataTable from './DataTable';
 import ChartsSection from './ChartsSection';
 import StreetLightMap from './StreetLightMap';
 import MaintenanceAlerts from './MaintenanceAlerts';
-import { Lightbulb, Zap, AlertTriangle, CheckCircle } from 'lucide-react';
-
-// Mock data - replace with actual Supabase data
-const mockStreetLightData = [
-  {
-    id: 1,
-    location: 'Main Street & 5th Ave',
-    ldr_value: 250,
-    current_value: 2.3,
-    status: 'normal',
-    latitude: 40.7589,
-    longitude: -73.9851,
-    last_updated: '2024-06-27T10:30:00Z'
-  },
-  {
-    id: 2,
-    location: 'Park Avenue & 2nd St',
-    ldr_value: 180,
-    current_value: 4.2,
-    status: 'fault',
-    latitude: 40.7614,
-    longitude: -73.9776,
-    last_updated: '2024-06-27T10:28:00Z'
-  },
-  {
-    id: 3,
-    location: 'Broadway & 8th St',
-    ldr_value: 320,
-    current_value: 2.1,
-    status: 'normal',
-    latitude: 40.7505,
-    longitude: -73.9934,
-    last_updated: '2024-06-27T10:29:00Z'
-  }
-];
-
-const mockMaintenanceData = [
-  {
-    id: 1,
-    street_light_id: 2,
-    issue_type: 'current_leakage',
-    severity: 'high',
-    predicted_date: '2024-06-28',
-    description: 'Current leakage detected - immediate attention required'
-  },
-  {
-    id: 2,
-    street_light_id: 1,
-    issue_type: 'ldr_malfunction',
-    severity: 'medium',
-    predicted_date: '2024-06-30',
-    description: 'LDR sensor showing irregular readings'
-  }
-];
+import { useStreetLightData } from '@/hooks/useStreetLightData';
+import { Lightbulb, Loader2 } from 'lucide-react';
 
 const Dashboard = () => {
-  const [streetLightData, setStreetLightData] = useState(mockStreetLightData);
-  const [maintenanceData, setMaintenanceData] = useState(mockMaintenanceData);
+  const { streetLights, maintenanceAlerts, loading, error } = useStreetLightData();
 
-  // Simulate real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStreetLightData(prev => 
-        prev.map(light => ({
-          ...light,
-          ldr_value: Math.max(0, light.ldr_value + (Math.random() - 0.5) * 20),
-          current_value: Math.max(0, light.current_value + (Math.random() - 0.5) * 0.5),
-          last_updated: new Date().toISOString()
-        }))
-      );
-    }, 3000);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-white mx-auto mb-4" />
+          <p className="text-white text-lg">Loading street light data...</p>
+        </div>
+      </div>
+    );
+  }
 
-    return () => clearInterval(interval);
-  }, []);
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-400 text-xl mb-4">Error loading data</div>
+          <p className="text-slate-300">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
-  const totalLights = streetLightData.length;
-  const faultyLights = streetLightData.filter(light => light.status === 'fault').length;
+  // Transform data for components
+  const transformedStreetLights = streetLights.map(light => ({
+    id: light.id,
+    location: light.location,
+    latitude: light.latitude,
+    longitude: light.longitude,
+    status: light.anomaly_result === 1 || light.current > 3 ? 'fault' : 'normal',
+    ldr_value: light.ldr,
+    current_value: light.current,
+    last_updated: light.reading_time
+  }));
+
+  const totalLights = transformedStreetLights.length;
+  const faultyLights = transformedStreetLights.filter(light => light.status === 'fault').length;
   const normalLights = totalLights - faultyLights;
 
   return (
@@ -96,6 +60,9 @@ const Dashboard = () => {
             Smart Street Light Monitoring System
           </h1>
           <p className="text-slate-300 text-lg">Real-time fault detection and predictive maintenance</p>
+          <p className="text-slate-400 text-sm mt-2">
+            Data refreshed: {new Date().toLocaleTimeString()}
+          </p>
         </div>
 
         {/* Stats Cards */}
@@ -103,7 +70,7 @@ const Dashboard = () => {
           totalLights={totalLights}
           normalLights={normalLights}
           faultyLights={faultyLights}
-          maintenanceAlerts={maintenanceData.length}
+          maintenanceAlerts={maintenanceAlerts.length}
         />
 
         {/* Main Content Grid */}
@@ -114,26 +81,26 @@ const Dashboard = () => {
               <CardHeader>
                 <CardTitle className="text-white flex items-center gap-2">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                  Live Street Light Locations
+                  Live Street Light Locations ({totalLights} lights)
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <StreetLightMap streetLights={streetLightData} />
+                <StreetLightMap streetLights={transformedStreetLights} />
               </CardContent>
             </Card>
           </div>
 
           {/* Maintenance Alerts */}
           <div>
-            <MaintenanceAlerts alerts={maintenanceData} />
+            <MaintenanceAlerts alerts={maintenanceAlerts} />
           </div>
         </div>
 
         {/* Charts Section */}
-        <ChartsSection data={streetLightData} />
+        <ChartsSection data={transformedStreetLights} />
 
         {/* Data Table */}
-        <DataTable data={streetLightData} />
+        <DataTable data={transformedStreetLights} />
       </div>
     </div>
   );
